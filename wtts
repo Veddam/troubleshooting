@@ -1,0 +1,694 @@
+(function ($, Drupal) {
+  $(document).ready(function () {
+    var language = "EN";
+    if (document.documentElement.lang === "fr") {
+      language = "FR";
+    }
+
+    //Session Storage call
+    if (getItemFromSessionStorage("WAIT_TIMES_ISSET_OBSP") == null) {
+      window.location.replace(language === "FR" ? "./temps-dattente" : "./wait-times");
+    }
+    function getItemFromSessionStorage(key) {
+      return sessionStorage.getItem(key);
+    }//working
+    var userLocationLatLng = {
+      lat: parseFloat(getItemFromSessionStorage("WAIT_TIMES_USERLOCATIONLAT")),
+      lng: parseFloat(getItemFromSessionStorage("WAIT_TIMES_USERLOCATIONLNG"))
+    };
+
+    let userLat = userLocationLatLng.lat;
+    let userLng = userLocationLatLng.lng;
+    //console.log("lat: ", userLat);
+    //console.log("lng: ", userLng);
+    let userEnteredLocation = getItemFromSessionStorage("WAIT_TIMES_LOCATION");
+
+    let postalFSA, mcTown;
+    let fsaNorth = ["P0T", "P0V", "P0W", "P0X", "P7A", "P7B", "P7C", "P7E", "P7G", "P7J", "P7K", "P7L", "P8N", "P8T", "P9A", "P9N"];
+    let mcTownNorth = ["Thunder Bay", "Atikokan", "Armstrong", "Marathon", "Geraldton", "Heron Bay", "Manitouwadge", "Terrace Bay", "Schreiber", "Nipigon", "Ignace", "Longlac", "Theresa", "Beardmore", "Red Rock", "Dryden", "Red Lake", "Vermilion Bay", "Ear Falls", "Rainy River", "Morson", "Emo", "Kenora", "Sioux Narrows", "Grassy Narrows", "Whitefish Bay", "Kejick", "Fort William First Nation", "Neebing", "Sioux Lookout", "Fort Frances", "Dalles"];
+    let fsaHamilton = ["L0R", "L0S", "L2A", "L2E", "L2G", "L2H", "L2J", "L2M", "L2N", "L2P", "L2R", "L2S", "L2T", "L2V", "L2W", "L3B", "L3C", "L3K", "L3M", "L7L", "L7M", "L7N", "L7P", "L7R", "L7S", "L7T", "L8B", "L8E", "L8G", "L8H", "L8J", "L8K", "L8L", "L8M", "L8N", "L8P", "L8R", "L8S", "L8T", "L8V", "L8W", "L9A", "L9B", "L9C", "L9G", "L9H", "L9K", "N0A", "N0E", "N1A", "N3L", "N3P", "N3R", "N3S", "N3T", "N3V", "N3W", "N3Y", "N4B"];
+    let mcTownHamilton = ["Hamilton", "Alberton", "Beamsville", "Binbrook", "Caistor Centre", "Campden", "Carlisle", "Copetown", "Freelton", "Grassie", "Jerseyville", "Jordan Station", "Lynden", "Millgrove", "Mount Hope", "Rockton", "Saint Anns", "Sheffield", "Smithville", "Troy", "Vineland", "Vineland Station", "Waterdown", "and Wellandport", "South and Northeast Niagara Region", "Allanburg", "Crystal Beach", "Fenwick", "Fonthill", "Niagara-on-the-Lake", "St. Davids", "Port Robinson", "Queenston", "Ridgeville", "Ridgeway", "Sherkston", "Stevensville", "Virgil", "Wainfleet", "Fort Erie", "Niagara Falls", "St. Catharines", "Thorold", "Welland", "Port Colborne", "Grimsby", "Burlington", "Stoney Creek", "Hamilton", "Ancaster", "Dundas", "Hagersville", "Fisherville", "Jarvis", "Selkirk", "Mississaugas of the Credit First Nation", "Port Dover", "Ohsweken", "Waterford", "Langton", "Burdford", "Dunnville", "Paris", "Brantford", "Caledonia", "Simcoe", "Delhi"];
+
+    const userLocationMarkerIconPath = "/themes/ontariohealth/images/waittimes-images/icon-home.png";
+    const orgMarkerIconPath = "/themes/ontariohealth/images/waittimes-images/map-marker.png";
+    let translations = {
+      english: { EN: "English", FR: "Anglais" },
+      french: { EN: "French", FR: "Français" },
+      englishAndFrench: { EN: "English, French", FR: "Anglais, français" },
+      wheelchairAccessible: { EN: "Wheelchair Accessible ", FR: "Accessible aux fauteuils roulants" },
+      weeks: { EN: "weeks", FR: "semaines" },
+      monday: { EN: "Monday", FR: "Lundi" },
+      tuesday: { EN: "Tuesday", FR: "Mardi" },
+      wednesday: { EN: "Wednesday", FR: "Mercredi" },
+      thursday: { EN: "Thursday", FR: "Jeudi" },
+      friday: { EN: "Friday", FR: "Vendredi" },
+      saturday: { EN: "Saturday", FR: "Samedi" },
+      sunday: { EN: "Sunday", FR: "Dimanche" },
+      to: { EN: "to", FR: "à" },
+      closed: { EN: "CLOSED", FR: "FERMÉ"}
+    }
+
+    function getTranslation(key) {
+      return language === "EN" ? translations[key].EN : translations[key].FR;
+    }
+
+    //Format location city or postal code to use for result header
+    function formatCityPostal(userEnteredLocation) {
+      if (userEnteredLocation.includes(", Ontario")) {
+        // Format city
+        mcTown= userEnteredLocation.replace(", Ontario", "").trim();
+        return userEnteredLocation.trim();
+      } else { // Format postal code
+        var postalReg = /\b([a-zA-Z]\d[a-zA-Z])\s*(\d[a-zA-Z]\d)\b/;
+        var postalMatch = userEnteredLocation.match(postalReg);
+        var postalCode = postalMatch ? postalMatch[0] : '';
+
+        postalCode = postalCode.toUpperCase();
+        postalCode = postalCode.replace(/(\w{3})(\w{3})/, '$1 $2');
+        postalFSA = postalCode.substring(0, 3);
+        userEnteredLocation = userEnteredLocation.replace(postalReg, postalCode);
+        return userEnteredLocation.trim();
+      }
+    }// working
+
+    // Check to see if the user entered location/postal code matches a mobile screening area
+    function checkMC(postalFSA, mcTown) {
+      if ($.inArray(postalFSA, fsaNorth) !== -1 || $.inArray(mcTown, mcTownNorth) !== -1) {
+        $("#mobilecoach-north").removeClass("visuallyHidden");
+      }
+      // Check if the code is in array2
+      else if ($.inArray(postalFSA, fsaHamilton) !== -1 || $.inArray(mcTown, mcTownHamilton) !== -1) {
+        $("#mobilecoach-hamilton").removeClass("visuallyHidden");
+      }
+    } //working
+
+    userEnteredLocation = formatCityPostal(userEnteredLocation);
+    checkMC(postalFSA, mcTown);
+
+    //Get data and add to page/map
+    let apiEndPoint = "https://obspwtapiwebappdev.azurewebsites.net/api/obsp-locations";
+
+    var map;
+    var markers = [];
+    var infoWindow;
+
+    // Initialize the map
+    async function initMap() {
+      let userlocation = { lat: userLat, lng: userLng };
+
+      map = new google.maps.Map(document.getElementById("google-map"), {
+        center: userlocation,
+        zoom: 15,
+        streetViewControl: false,
+        fullscreenControl: false,
+        mapTypeControl: false,
+        mapTypeControlOptions: {
+          mapTypeIds: ['roadmap']
+        }
+      });
+      geocoder = new google.maps.Geocoder();
+      distanceService = new google.maps.DistanceMatrixService();
+      infoWindow = new google.maps.InfoWindow();
+      //Close info window if document is clicked unless it's in the open info window
+      if (infoWindow) {
+        $(map).not(this).on('click', function () {
+          infoWindow.close();
+        })
+      };
+
+      // Initialize bounds
+      bounds = new google.maps.LatLngBounds();
+
+      // Add user location marker
+      addUserLocationMarker(userlocation);
+    }
+
+    // Add user location marker
+    function addUserLocationMarker(location) {
+      var marker = new google.maps.Marker({
+        position: location,
+        map: map,
+        icon: userLocationMarkerIconPath
+      });
+
+      // Extend the bounds to include the user location
+      bounds.extend(marker.getPosition());
+      fitMapToBounds();
+    }
+
+    var currentIndex = 0;
+    var locationsPerPage = 3;
+    var listStartindex = 1;
+    var filterData = [];
+    var fullDataSet = [];
+    var lastUpdated;
+
+    // Function to fetch data from API
+    function fetchData(start = 0) {
+      $.ajax({
+        url: apiEndPoint,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+          originLatitude: userLat,
+          originLongitude: userLng,
+          start: start,
+          itemsCount: 10, // Fetch 10 items at a time
+          sortBy: 'distance',
+          sortOrder: 'asc'
+        }),
+        success: function (data) {
+          if (data.length > 0) {
+            fullDataSet = fullDataSet.concat(data);
+            fetchData(start + 10); // Fetch the next set of items
+          } else {
+            filterData = fullDataSet.slice(); // Ensure filterData is initialized with fullDataSet
+            generateFilters();
+            loadMoreItems();
+          }
+        },
+        error: function (error) {
+          console.error('Error fetching data:', error);
+        }
+      });
+    }
+
+    // Convert the date and assign it to front end
+    function setLastUpdatedDate(dateString) {
+      var date = new Date(dateString);
+      var options = { year: 'numeric', month: 'long', day: 'numeric' };
+      var formattedDate = date.toLocaleDateString('en-US', options);
+      $('.obsp-last-updated-date').text(formattedDate);
+    }
+
+    // Generate filter options based on API data
+    function generateFilters() {
+      var languages = new Set();
+      var accessibility = new Set();
+      var waitTimes = new Set();
+      var availability = new Set();
+
+      fullDataSet.forEach(function (location) {
+        if (location.languages.english) languages.add(getTranslation("english"));
+        if (location.languages.french) languages.add(getTranslation("french"));
+        if (location.accessibility === "Wheelchair Accessible") {
+          accessibility.add(getTranslation("wheelchairAccessible"));
+        }
+        if (location.waitTime){
+          let locationWT = location.waitTime
+          if (language === "FR") {
+            locationWT = location.waitTime.replace('to', 'à').replace('weeks', 'semaines');
+          }
+          waitTimes.add(locationWT);
+        }
+        if (location.hours.monday) availability.add(getTranslation("monday"));
+        if (location.hours.tuesday) availability.add(getTranslation("tuesday"));
+        if (location.hours.wednesday) availability.add(getTranslation("wednesday"));
+        if (location.hours.thursday) availability.add(getTranslation("thursday"));
+        if (location.hours.friday) availability.add(getTranslation("friday"));
+        if (location.hours.saturday) availability.add(getTranslation("saturday"));
+        if (location.hours.sunday) availability.add(getTranslation("sunday"));
+      });
+
+      updateFilterUI('#wt-language-filters', Array.from(languages).sort(), 'language');
+      updateFilterUI('#wt-accessibility-filters', Array.from(accessibility), 'wc-accessible');
+      updateFilterUI('#wt-wait-time-filters', Array.from(waitTimes).sort(), 'appointment-wt');
+      updateFilterUI('#wt-availability-filters', Array.from(availability), 'appointment-avail');
+
+      $('.facets-checkbox').on('change', debounce(applyFilters, 300));
+    }
+
+    // Update filter UI
+    function updateFilterUI(selector, items, prefix, matchValue) {
+      var container = $(selector).closest('.search-facet');
+      $(selector).empty();
+      if (items.length === 0) {
+        container.hide();
+      } else {
+        container.show();
+        var fragment = document.createDocumentFragment();
+        items.forEach(function (item) {
+          if (!matchValue || item === matchValue) {
+            var li = document.createElement('li');
+            li.className = 'facet-item';
+            li.innerHTML = '<input class="facets-checkbox" id="' + prefix + '-' + item.replace(/\s+/g, '-') + '" type="checkbox"><label for="' + prefix + '-' + item.replace(/\s+/g, '-') + '"> <span class="wt-facet-value">' + item + '</span></label>';
+            fragment.appendChild(li);
+          }
+        });
+        $(selector).append(fragment);
+      }
+      toggleFacetContainerVisibility(selector);
+    }
+
+    // Preserve and update filter UI
+    function preserveAndUpdateFilterUI(selector, items, prefix, matchValue) {
+      var container = $(selector).closest('.search-facet');
+      let selectedItems = new Set($(selector + ' .facets-checkbox:checked').map(function () { return $(this).next('label').text().trim(); }).get());
+      $(selector).empty();
+      if (items.length === 0) {
+        container.hide();
+      } else {
+        container.show();
+        var fragment = document.createDocumentFragment();
+        items.forEach(function (item) {
+          if (!matchValue || item === matchValue) {
+            let isChecked = selectedItems.has(item) ? 'checked' : '';
+            var li = document.createElement('li');
+            li.className = 'facet-item';
+            li.innerHTML = '<input class="facets-checkbox" id="' + prefix + '-' + item.replace(/\s+/g, '-') + '" type="checkbox" ' + isChecked + '><label for="' + prefix + '-' + item.replace(/\s+/g, '-') + '"> <span class="wt-facet-value">' + item + '</span></label>';
+            fragment.appendChild(li);
+          }
+        });
+        $(selector).append(fragment);
+      }
+      toggleFacetContainerVisibility(selector);
+    }
+
+    // Toggle visibility of the parent .search-facet container
+    function toggleFacetContainerVisibility(selector) {
+      var container = $(selector).closest('.search-facet');
+      if ($(selector).children('li').length === 0) {
+        container.hide();
+      } else {
+        container.show();
+      }
+    }
+
+    // Apply filters to the data
+    function applyFilters() {
+      let selectedLanguages = getSelectedFilters('#wt-language-filters');
+      let selectedAccessibility = getSelectedFilters('#wt-accessibility-filters');
+      let selectedWaitTimes = getSelectedFilters('#wt-wait-time-filters');
+      let selectedAvailability = getSelectedFilters('#wt-availability-filters');
+
+      console.log('Selected Languages:', selectedLanguages);
+      console.log('Selected Accessibility:', selectedAccessibility);
+      console.log('Selected Wait Times:', selectedWaitTimes);
+      console.log('Selected Availability:', selectedAvailability);
+
+      filterData = fullDataSet.filter(location => {
+        let matchesLanguage = selectedLanguages.length === 0 || selectedLanguages.some(lang => location.languages[lang.toLowerCase()]);
+        let matchesAccessibility = selectedAccessibility.length === 0 || selectedAccessibility.includes(location.accessibility);
+        let matchesWaitTimes = selectedWaitTimes.length === 0 || selectedWaitTimes.includes(location.waitTime);
+        let matchesAvailability = selectedAvailability.length === 0 || selectedAvailability.some(day => location.hours[day.toLowerCase()]);
+
+        // Log the matching conditions for each location
+        console.log(`Location: ${location.name}`);
+        console.log(`  Matches Language: ${matchesLanguage}`);
+        console.log(`  Matches Accessibility: ${matchesAccessibility}`);
+        console.log(`  Matches Wait Times: ${matchesWaitTimes}`);
+        console.log(`  Matches Availability: ${matchesAvailability}`);
+
+        // Include the location if it matches at least one filter in each selected category
+        return (selectedLanguages.length === 0 || matchesLanguage) &&
+          (selectedAccessibility.length === 0 || matchesAccessibility) &&
+          (selectedWaitTimes.length === 0 || matchesWaitTimes) &&
+          (selectedAvailability.length === 0 || matchesAvailability);
+      });
+
+      console.log('Filtered Data:', filterData);
+
+      // Render the filtered results
+      renderFilteredResults();
+    }
+
+    // Render the filtered results based on the original display criteria
+    function renderFilteredResults() {
+      // Determine the number of items to display based on the current number of displayed results
+      let itemsToDisplay = Math.min(currentIndex, filterData.length);
+      listStartindex = 1; // Reset the list start index
+      $('#results-container').empty(); // Clear previous results
+
+      // Check if there are any filtered items to display
+      if (filterData.length > 0) {
+        renderItems(filterData.slice(0, itemsToDisplay)); // Load the first set of filtered items
+      } else {
+        $('#results-container').append('<p>No results found.</p>'); // Display a message if no results are found
+      }
+
+      updateFilterOptions(); // Update filter options based on the filtered data
+
+      // Show the load more button if there are more items to load
+      if (filterData.length > itemsToDisplay) {
+        $('.load-more').show();
+      } else {
+        $('.load-more').hide();
+      }
+
+      // Clear existing markers and add new markers based on the filtered data
+      clearMarkers();
+      bounds = new google.maps.LatLngBounds(); // Reset bounds
+      bounds.extend(new google.maps.LatLng(userLat, userLng)); // Include user location in bounds
+      filterData.slice(0, itemsToDisplay).forEach((location, index) => {
+        addMarker(location, index + 1);
+      });
+    }
+
+    // Load more results
+    var isLoading = false; // Flag to prevent multiple calls
+    function loadMoreItems() {
+      if (isLoading) {
+        return; // Prevent multiple calls
+      }
+      isLoading = true; // Set the flag
+
+      var nextItems = filterData.slice(currentIndex, currentIndex + locationsPerPage);
+      //console.log('Next Items:', nextItems);
+      if (nextItems.length > 0) {
+        renderItems(nextItems);
+        currentIndex += locationsPerPage;
+      }
+      if (currentIndex >= filterData.length) {
+        $('.load-more').hide();
+      } else {
+        $('.load-more').show();
+      }
+
+      isLoading = false; // Reset the flag
+    }
+
+    // Call resetDisplayCount when filters are removed
+    $('.filter-reset-button').on('click', function () {
+      resetDisplayCount();
+    });
+
+    // Call resetDisplayCount when a filter option is deselected
+    $('.facets-checkbox').on('change', function () {
+      if (!$(this).is(':checked')) {
+        resetDisplayCount();
+      }
+    });
+
+    // Get selected filters
+    function getSelectedFilters(selector) {
+      return $(selector + ' .facets-checkbox:checked').map(function () {
+        return $(this).next('label').text().trim();
+      }).get();
+    }
+
+    // Update filter options based on filtered data
+    function updateFilterOptions() {
+      var languages = new Set();
+      var accessibility = new Set();
+      var waitTimes = new Set();
+      var availability = new Set();
+
+      // Collect all unique filter options from the filtered data
+      filterData.forEach(function (location) {
+        if (location.languages.english) languages.add(getTranslation("english"));
+        if (location.languages.french) languages.add(getTranslation("french"));
+        if (location.accessibility) accessibility.add(location.accessibility);
+        if (location.waitTime) waitTimes.add(location.waitTime);
+        if (location.hours.monday) availability.add(getTranslation("monday"));
+        if (location.hours.tuesday) availability.add(getTranslation("tuesday"));
+        if (location.hours.wednesday) availability.add(getTranslation("wednesday"));
+        if (location.hours.thursday) availability.add(getTranslation("thursday"));
+        if (location.hours.friday) availability.add(getTranslation("friday"));
+        if (location.hours.saturday) availability.add(getTranslation("saturday"));
+        if (location.hours.sunday) availability.add(getTranslation("sunday"));
+      });
+
+      // Preserve and update the filter UI
+      preserveAndUpdateFilterUI('#wt-language-filters', Array.from(languages).sort(), 'language');
+      preserveAndUpdateFilterUI('#wt-accessibility-filters', Array.from(accessibility), 'wc-accessible', 'Wheelchair Accessible');
+      preserveAndUpdateFilterUI('#wt-wait-time-filters', Array.from(waitTimes).sort(), 'appointment-wt');
+      preserveAndUpdateFilterUI('#wt-availability-filters', Array.from(availability), 'appointment-avail');
+
+      // Reattach the event listener for filter changes
+      $('.facets-checkbox').on('change', debounce(applyFilters, 300));
+    }
+
+      let langAvail;
+      let locationWT;
+    // Render items and add markers to the map
+    function renderItems(data) {
+      var template = $('.wt-result-item-template').html();
+      var container = $('.wait-times-result-container'); // Ensure this is the correct container
+
+      var fragment = document.createDocumentFragment();
+      data.forEach(function (location) {
+        if (location.languages.english && location.languages.french) {
+          langAvail = getTranslation("englishAndFrench");
+        } else if (location.languages.english) {
+          langAvail = getTranslation("english");
+        } else if (location.languages.french) {
+          langAvail = getTranslation("french");
+        } else {
+          langAvail = "";
+        }
+        if(location.waitTime) {
+          if (language === 'FR') {
+            locationWT = location.waitTime.replace('to', 'à').replace('weeks', 'semaines');
+          } else {
+            locationWT = location.waitTime;
+          }
+        }
+
+        if (!container.find('.location-id-' + location.id).length) { // Check if the item already exists
+          lastUpdated = location.lastUpdated;
+          var templateItem = $(template);
+          templateItem.addClass('location-id-' + location.id).attr('latitude', location.latitude).attr('longitude', location.longitude); // Add a unique class to identify the item
+          templateItem.find('.org-index-number p').text(listStartindex++);
+          templateItem.find('.location-name').text(location.name);
+          templateItem.find('.wait-time').text(locationWT);
+          templateItem.find('.distance-away').text(location.distance);
+          if (location.accessibility === "Wheelchair Accessible") {
+            templateItem.find('.accessibility-type').text(getTranslation("wheelchairAccessible"));
+          } else {
+            templateItem.find('.obsp-result-head-accessibility').remove();
+          }
+          templateItem.find('.lang-type').text(langAvail);
+          templateItem.find('.location-address .address-line-1').text(location.address.line_1 + ' ');
+          templateItem.find('.location-address .address-city').text(location.address.city);
+          templateItem.find('.location-address .address-province').text(location.address.state + ". ");
+          templateItem.find('.location-address .address-post-code').text(location.address.postalCode);
+          templateItem.find('.location-phone').text(location.phone);
+          if (location.tollFree) {
+            templateItem.find('.location-tf-phone').text(location.tollFree);
+          } else {
+            templateItem.find('.tf-container').remove();
+          }
+          templateItem.find('.monHours').text(location.hours.monday ? location.hours.monday.startTime + "  " + getTranslation("to") + " " + location.hours.monday.endTime : getTranslation("closed"));
+          templateItem.find('.tueHours').text(location.hours.tuesday ? location.hours.tuesday.startTime + "  " + getTranslation("to") + " " + location.hours.tuesday.endTime : getTranslation("closed"));
+          templateItem.find('.wedHours').text(location.hours.wednesday ? location.hours.wednesday.startTime + "  " + getTranslation("to") + " " + location.hours.wednesday.endTime : getTranslation("closed"));
+          templateItem.find('.thuHours').text(location.hours.thursday ? location.hours.thursday.startTime + "  " + getTranslation("to") + " " + location.hours.thursday.endTime : getTranslation("closed"));
+          templateItem.find('.friHours').text(location.hours.friday ? location.hours.friday.startTime + "  " + getTranslation("to") + " " + location.hours.friday.endTime : getTranslation("closed"));
+          templateItem.find('.satHours').text(location.hours.saturday ? location.hours.saturday.startTime + "  " + getTranslation("to") + " " + location.hours.saturday.endTime : getTranslation("closed"));
+          templateItem.find('.sunHours').text(location.hours.sunday ? location.hours.sunday.startTime + "  " + getTranslation("to") + " " + location.hours.sunday.endTime : getTranslation("closed"));
+          fragment.appendChild(templateItem[0]);
+
+          // Add marker to the map with the number
+          addMarker(location, listStartindex - 1);
+        }
+      });
+      container.append(fragment);
+      setLastUpdatedDate(lastUpdated);
+    }
+
+    // Add marker to the map with the number
+    function addMarker(location, number) {
+      var img = new Image();
+      img.src = orgMarkerIconPath;
+      img.onload = function () {
+        var markerIcon = createCustomMarkerIcon(img, number);
+
+        var marker = new google.maps.Marker({
+          position: { lat: location.latitude, lng: location.longitude },
+          map: map,
+          icon: markerIcon
+        });
+
+        var infoContent = `
+      <div>
+        <strong>${location.name}</strong>
+        <p><strong>Address: </strong>${location.address.line_1}, ${location.address.city}, ${location.address.state} ${location.address.postalCode}</p>
+        <p><strong>Phone: </strong>${location.phone}</p>
+        ${location.tollFree ? `<p><strong>Toll-free: </strong>${location.tollFree}</p>` : ''}
+        <p class="iw-dal-wrap">
+          <span class="iw-dal">
+            <span class="icon location-icon">
+              <img src="/sites/ontariohealth/files/marker-icon.png">
+            </span>
+            ${location.distance} km away
+          </span>
+          <span class="iw-dal">
+            ${location.accessibility === "Wheelchair Accessible" ? `<span class="icon accessibility-icon"><img src="/sites/ontariohealth/files/accessibility-icon.png"></span> ${location.accessibility}` : ''}
+          </span>
+          <span class="iw-dal">
+            <span class="icon language-icon">
+              <img src="/sites/ontariohealth/files/lang-icon.png">
+            </span>
+            ${langAvail}
+          </span>
+        </p>
+      </div>
+    `;
+
+        var infoWindow = new google.maps.InfoWindow({
+          content: infoContent
+        });
+
+        marker.addListener('click', function () {
+          infoWindow.open(map, marker);
+        });
+
+        markers.push(marker); // Ensure markers are added to the array
+
+        // Extend the bounds to include this marker's position
+        bounds.extend(marker.getPosition());
+        fitMapToBounds();
+      };
+    }
+
+    // Fit the map to the bounds of all markers
+    function fitMapToBounds() {
+      if (markers.length > 0) {
+        map.fitBounds(bounds);
+      }
+    }
+    // Clear all markers from the map
+    function clearMarkers() {
+      markers.forEach(marker => marker.setMap(null));
+      markers = [];
+    }
+
+    // Create a custom marker icon with the number
+    function createCustomMarkerIcon(img, number) {
+      var canvas = document.createElement('canvas');
+      var width = 25; // Width of the marker icon
+      var height = 38; // Height of the marker icon
+      canvas.width = width;
+      canvas.height = height;
+      var context = canvas.getContext('2d');
+
+      // Draw the marker icon
+      context.drawImage(img, 0, 0, width, height);
+
+      // Draw the number on the marker icon
+      context.fillStyle = 'white';
+      context.font = 'bold 13px Roboto, Arial, sans-serif';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(number, width / 2, height / 2);
+
+      return canvas.toDataURL();
+    }
+
+    // Load more button click with debounce
+    $('.general-content').off('click', '#load-more-button').on('click', '#load-more-button', debounce(function (event) {
+      if ($('.load-more').is(':visible')) {
+        loadMoreItems();
+        sortItems()
+      }
+    }, 300)); // 300ms debounce delay
+
+    // Sort visible results using sort by select
+    function sortItems() {
+      var sortBy = $('#obsp-wt-sort').val();
+
+      // Mapping for custom wait time sorting
+      var waitTimeOrder = {
+        '0 to 2': 1,
+        '2 to 4': 2,
+        '4 to 6': 3,
+        '6 to 8': 4,
+        '8+': 5,
+        'null': 6 // Add a high value for null to push them to the end
+      };
+
+      var container = $('.wait-times-result-container');
+      var items = container.children('.org').get();
+
+      items.sort(function (a, b) {
+        var aWaitTime = $(a).find('.wait-time').text().replace(' weeks', '') || 'null';
+        var bWaitTime = $(b).find('.wait-time').text().replace(' weeks', '') || 'null';
+        var aDistance = parseFloat($(a).find('.distance-away').text());
+        var bDistance = parseFloat($(b).find('.distance-away').text());
+
+        if (sortBy === 'location_nearest') {
+          return aDistance - bDistance;
+        } else if (sortBy === 'wait_time_low_high') {
+          return waitTimeOrder[aWaitTime] - waitTimeOrder[bWaitTime];
+        } else if (sortBy === 'wait_time_high_low') {
+          return waitTimeOrder[bWaitTime] - waitTimeOrder[aWaitTime];
+        }
+      });
+
+      listStartindex = 1; // Reset the list start index
+      var fragment = document.createDocumentFragment();
+      $.each(items, function (index, item) {
+        $(item).find('.org-index-number p').text(listStartindex++); // Update the index number
+        fragment.appendChild(item);
+      });
+      container.append(fragment);
+
+      // Clear existing markers
+      markers.forEach(marker => marker.setMap(null));
+      markers = [];
+
+      // Add new markers in the sorted order
+      items.forEach((item, index) => {
+        var location = {
+          latitude: parseFloat($(item).attr('latitude')),
+          longitude: parseFloat($(item).attr('longitude')),
+          name: $(item).find('.location-name').text(),
+          address: {
+            line_1: $(item).find('.address-line-1').text(),
+            city: $(item).find('.address-city').text(),
+            state: $(item).find('.address-state').text(),
+            postalCode: $(item).find('.address-postal-code').text()
+          },
+          phone: $(item).find('.phone').text(),
+          tollFree: $(item).find('.toll-free').text(),
+          distance: $(item).find('.distance-away').text(),
+          accessibility: $(item).find('.accessibility').text()
+        };
+
+        addMarker(location, index + 1);
+      });
+    }
+
+    // Sort change event
+    $('#obsp-wt-sort').change(function () {
+      sortItems();
+    });
+
+    // Debounce function to limit the rate at which a function can fire, this is added because when pressing load more or applying filters the functions seem to fire twice per event, or cause a lag if used to often in succession
+    function debounce(func, wait) {
+      let timeout;
+      return function () {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, arguments), wait);
+      };
+    }
+
+    //Add accordion functionality for the hours section of each card
+    function activateAccordions() {
+      let isThrottled = false;
+      $('.general-content').on('click', '.wt-accordion-trigger', function () {
+        if (isThrottled) return;
+        isThrottled = true;
+        setTimeout(() => isThrottled = false, 300);
+        if ($(this).hasClass('closed')) {
+          $(this).removeClass('closed').addClass('open');
+          $(this).next('button').attr('aria-expanded', 'true');
+          $(this).next('section').addClass('active').attr('aria-hidden', 'false');
+        } else if ($(this).hasClass('open')) {
+          $(this).removeClass('open').addClass('closed');
+          $(this).next('button').attr('aria-expanded', 'false');
+          $(this).next('section').removeClass('active').attr('aria-hidden', 'true');
+        }
+      });
+    }//working
+
+    // Initial load
+    initMap();
+    fetchData();
+    $('#obsp-user-location').text(userEnteredLocation);
+    setTimeout(function () {
+      $("#tab-load-container").addClass("display-none");
+      $("#load-more-wait-loader").addClass("display-none");
+    }, 2000);
+    activateAccordions();
+  });
+})(jQuery, Drupal);
